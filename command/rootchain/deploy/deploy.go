@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/umbracle/ethgo"
@@ -568,19 +567,15 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 					}
 				}
 
-				var receipt *ethgo.Receipt
-				var err error
-				for {
-					txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
+				txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
 
-					receipt, err = txRelayer.SendTransaction(txn, deployerKey)
-					if err == nil && receipt != nil {
-						fmt.Sprintf("sending %s contract deploy transaction has been suucessfull.", contract.name)
-						break
-					} else {
-						fmt.Sprintf("failed sending %s contract deploy transaction try to redeploy: %w", contract.name, err)
-						time.Sleep(time.Second * 5)
-					}
+				receipt, err := txRelayer.SendTransaction(txn, deployerKey)
+				if err != nil {
+					return fmt.Errorf("failed sending %s contract deploy transaction: %w", contract.name, err)
+				}
+
+				if receipt == nil || receipt.Status != uint64(types.ReceiptSuccess) {
+					return fmt.Errorf("deployment of %s contract failed", contract.name)
 				}
 
 				deployResults := make([]*deployContractResult, 0, 2)
