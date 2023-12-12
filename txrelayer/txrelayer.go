@@ -95,23 +95,16 @@ func (t *TxRelayerImpl) Call(from ethgo.Address, to ethgo.Address, input []byte)
 func (t *TxRelayerImpl) SendTransaction(txn *ethgo.Transaction, key ethgo.Key) (*ethgo.Receipt, error) {
 	txnHash, err := t.sendTransactionLocked(txn, key)
 	if err != nil {
-		if strings.Contains(
-			strings.ToLower(err.Error()),
-			strings.ToLower("replacement transaction underpriced")) {
-			time.Sleep(time.Second * 5)
-			return t.SendTransaction(txn, key)
-		} else {
-			if txn.Type != ethgo.TransactionLegacy {
-				for _, fallbackErr := range dynamicFeeTxFallbackErrs {
-					if strings.Contains(
-						strings.ToLower(err.Error()),
-						strings.ToLower(fallbackErr.Error())) {
-						// "downgrade" transaction to the legacy tx type and resend it
-						txn.Type = ethgo.TransactionLegacy
-						txn.GasPrice = 0
+		if txn.Type != ethgo.TransactionLegacy {
+			for _, fallbackErr := range dynamicFeeTxFallbackErrs {
+				if strings.Contains(
+					strings.ToLower(err.Error()),
+					strings.ToLower(fallbackErr.Error())) {
+					// "downgrade" transaction to the legacy tx type and resend it
+					txn.Type = ethgo.TransactionLegacy
+					txn.GasPrice = 0
 
-						return t.SendTransaction(txn, key)
-					}
+					return t.SendTransaction(txn, key)
 				}
 			}
 		}
