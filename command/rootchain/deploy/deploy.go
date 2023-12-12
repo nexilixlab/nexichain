@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/umbracle/ethgo"
 	"github.com/umbracle/ethgo/jsonrpc"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/0xPolygon/polygon-edge/chain"
 	"github.com/0xPolygon/polygon-edge/command"
@@ -646,7 +644,6 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 		SupernetID:     supernetID,
 		CommandResults: commandResults}, nil
 }
-
 
 // populateExistingTokenAddr checks whether given token is deployed on the provided address.
 // If it is, then its address is set to the rootchain config, otherwise an error is returned
