@@ -100,6 +100,11 @@ func (t *TxRelayerImpl) SendTransaction(txn *ethgo.Transaction, key ethgo.Key) (
 			strings.ToLower("replacement transaction underpriced")) {
 			time.Sleep(time.Second * 5)
 			return t.SendTransaction(txn, key)
+		} else if strings.Contains(
+			strings.ToLower(err.Error()),
+			strings.ToLower("exceeds the configured cap")) {
+			time.Sleep(time.Second * 5)
+			return t.SendTransaction(txn, key)
 		} else {
 			if txn.Type != ethgo.TransactionLegacy {
 				for _, fallbackErr := range dynamicFeeTxFallbackErrs {
