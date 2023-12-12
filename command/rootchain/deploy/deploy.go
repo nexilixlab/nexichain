@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
+	"sync"
 
 	"github.com/spf13/cobra"
 	"github.com/umbracle/ethgo"
 	"github.com/umbracle/ethgo/jsonrpc"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/0xPolygon/polygon-edge/chain"
 	"github.com/0xPolygon/polygon-edge/command"
@@ -545,63 +546,79 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 
 	allContracts = append(tokenContracts, allContracts...)
 
+	g, ctx := errgroup.WithContext(cmdCtx)
 	results := make(map[string]*deployContractResult, len(allContracts))
+	resultsLock := sync.Mutex{}
 	proxyAdmin := types.StringToAddress(params.proxyContractsAdmin)
 
 	for _, contract := range allContracts {
-		bytecode := contract.artifact.Bytecode
-		if contract.byteCodeBuilder != nil {
-			bytecode, err = contract.byteCodeBuilder()
-			if err != nil {
-				return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil}, err
+		contract := contract
+
+		g.Go(func() error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				bytecode := contract.artifact.Bytecode
+				if contract.byteCodeBuilder != nil {
+					bytecode, err = contract.byteCodeBuilder()
+					if err != nil {
+						return err
+					}
+				}
+
+				txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
+
+				receipt, err := txRelayer.SendTransaction(txn, deployerKey)
+				if err != nil {
+					return fmt.Errorf("failed sending %s contract deploy transaction: %w", contract.name, err)
+				}
+
+				if receipt == nil || receipt.Status != uint64(types.ReceiptSuccess) {
+					return fmt.Errorf("deployment of %s contract failed", contract.name)
+				}
+
+				deployResults := make([]*deployContractResult, 0, 2)
+				implementationAddress := types.Address(receipt.ContractAddress)
+
+				deployResults = append(deployResults, newDeployContractsResult(contract.name,
+					implementationAddress,
+					receipt.TransactionHash,
+					receipt.GasUsed))
+
+				if contract.hasProxy {
+					proxyContractName := getProxyNameForImpl(contract.name)
+
+					receipt, err := helper.DeployProxyContract(
+						txRelayer, deployerKey, proxyContractName, proxyAdmin, implementationAddress)
+					if err != nil {
+						return err
+					}
+
+					if receipt == nil || receipt.Status != uint64(types.ReceiptSuccess) {
+						return fmt.Errorf("deployment of %s contract failed", proxyContractName)
+					}
+
+					deployResults = append(deployResults, newDeployContractsResult(proxyContractName,
+						types.Address(receipt.ContractAddress),
+						receipt.TransactionHash,
+						receipt.GasUsed))
+				}
+
+				resultsLock.Lock()
+				defer resultsLock.Unlock()
+
+				for _, deployResult := range deployResults {
+					results[deployResult.Name] = deployResult
+				}
+
+				return nil
 			}
-		}
+		})
+	}
 
-		txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
-
-		receipt, err := txRelayer.SendTransaction(txn, deployerKey)
-		if err != nil {
-			return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil}, err
-		}
-
-		if receipt == nil || receipt.Status != uint64(types.ReceiptSuccess) {
-			return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil},
-				fmt.Errorf("deployment of %s contract failed", contract.name)
-		}
-
-		deployResults := make([]*deployContractResult, 0, 2)
-		implementationAddress := types.Address(receipt.ContractAddress)
-
-		deployResults = append(deployResults, newDeployContractsResult(contract.name,
-			implementationAddress,
-			receipt.TransactionHash,
-			receipt.GasUsed))
-
-		if contract.hasProxy {
-			proxyContractName := getProxyNameForImpl(contract.name)
-
-			receipt, err := helper.DeployProxyContract(
-				txRelayer, deployerKey, proxyContractName, proxyAdmin, implementationAddress)
-			if err != nil {
-				return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil}, err
-			}
-
-			if receipt == nil || receipt.Status != uint64(types.ReceiptSuccess) {
-				return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil},
-					fmt.Errorf("deployment of %s contract failed", proxyContractName)
-			}
-
-			deployResults = append(deployResults, newDeployContractsResult(proxyContractName,
-				types.Address(receipt.ContractAddress),
-				receipt.TransactionHash,
-				receipt.GasUsed))
-		}
-
-		for _, deployResult := range deployResults {
-			results[deployResult.Name] = deployResult
-		}
-
-		// time.Sleep(10 * time.Second) // منتظر 10 ثانیه می‌مانیم قبل از ارسال درخواست بعدی
+	if err := g.Wait(); err != nil {
+		return collectResultsOnError(results), err
 	}
 
 	commandResults := make([]command.CommandResult, 0, len(results))
@@ -617,6 +634,8 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 		populatorFn(rootchainConfig, result.Address)
 	}
 
+	g, ctx = errgroup.WithContext(cmdCtx)
+
 	for contractName := range results {
 		contractName := contractName
 
@@ -625,12 +644,18 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 			continue
 		}
 
-		err := initializer(outputter, txRelayer, rootchainConfig, deployerKey)
-		if err != nil {
-			return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil}, err
-		}
+		g.Go(func() error {
+			select {
+			case <-cmdCtx.Done():
+				return cmdCtx.Err()
+			default:
+				return initializer(outputter, txRelayer, rootchainConfig, deployerKey)
+			}
+		})
+	}
 
-		time.Sleep(10 * time.Second) // منتظر 10 ثانیه می‌مانیم قبل از ارسال درخواست بعدی
+	if err := g.Wait(); err != nil {
+		return deploymentResultInfo{RootchainCfg: nil, SupernetID: 0, CommandResults: nil}, err
 	}
 
 	// register supernets manager on stake manager
