@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/umbracle/ethgo"
@@ -568,6 +569,8 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 				}
 
 				txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
+
+				time.Sleep(10 * time.Second)
 
 				receipt, err := txRelayer.SendTransaction(txn, deployerKey)
 				if err != nil {
