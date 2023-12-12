@@ -575,8 +575,10 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 
 					receipt, err = txRelayer.SendTransaction(txn, deployerKey)
 					if err == nil && receipt != nil {
+						fmt.Sprintf("sending %s contract deploy transaction has been suucessfull.", contract.name)
 						break
 					} else {
+						fmt.Sprintf("failed sending %s contract deploy transaction try to redeploy: %w", contract.name, err)
 						time.Sleep(time.Second * 5)
 					}
 				}
