@@ -601,7 +601,7 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 			results[deployResult.Name] = deployResult
 		}
 
-		time.Sleep(10 * time.Second) // منتظر 10 ثانیه می‌مانیم قبل از ارسال درخواست بعدی
+		// time.Sleep(10 * time.Second) // منتظر 10 ثانیه می‌مانیم قبل از ارسال درخواست بعدی
 	}
 
 	commandResults := make([]command.CommandResult, 0, len(results))
