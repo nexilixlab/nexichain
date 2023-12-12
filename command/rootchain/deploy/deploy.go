@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/umbracle/ethgo"
@@ -575,6 +576,8 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 					receipt, err = txRelayer.SendTransaction(txn, deployerKey)
 					if err == nil && receipt != nil {
 						break
+					} else {
+						time.Sleep(time.Second * 5)
 					}
 				}
 
