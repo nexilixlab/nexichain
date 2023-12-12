@@ -567,15 +567,15 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 					}
 				}
 
-				txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
+				var receipt *ethgo.Receipt
+				var err error
+				for {
+					txn := helper.CreateTransaction(ethgo.ZeroAddress, nil, bytecode, nil, true)
 
-				receipt, err := txRelayer.SendTransaction(txn, deployerKey)
-				if err != nil {
-					return fmt.Errorf("failed sending %s contract deploy transaction: %w", contract.name, err)
-				}
-
-				if receipt == nil || receipt.Status != uint64(types.ReceiptSuccess) {
-					return fmt.Errorf("deployment of %s contract failed", contract.name)
+					receipt, err = txRelayer.SendTransaction(txn, deployerKey)
+					if err == nil && receipt != nil {
+						break
+					}
 				}
 
 				deployResults := make([]*deployContractResult, 0, 2)
