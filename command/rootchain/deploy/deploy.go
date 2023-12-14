@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/umbracle/ethgo"
@@ -633,7 +634,7 @@ func deployContracts(outputter command.OutputFormatter, client *jsonrpc.Client, 
 
 		populatorFn(rootchainConfig, result.Address)
 	}
-
+	time.Sleep(60 * time.Second)
 	g, ctx = errgroup.WithContext(cmdCtx)
 
 	for contractName := range results {
